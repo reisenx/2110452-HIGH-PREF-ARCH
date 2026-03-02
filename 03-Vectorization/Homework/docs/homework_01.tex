@@ -1,0 +1,559 @@
+% DOCUMENT CLASS SETUP
+\documentclass[12pt, a4paper]{article}
+
+% DOCUMENT PACKAGES
+\usepackage[a4paper, margin=1in]{geometry}
+\usepackage{titling}
+\usepackage{enumitem}
+\usepackage{amsmath}
+\usepackage{graphicx}
+\usepackage{xcolor}
+\usepackage{listings}
+\usepackage{hyperref}
+
+% FONT AND ENCODING SETUP
+\usepackage[english]{babel}
+\usepackage[utf8]{inputenc}
+\usepackage[T1]{fontenc}
+\usepackage{lmodern}
+\usepackage{fontspec}
+
+% PROFESSIONAL CODE BLOCK
+\usepackage{tcolorbox}
+\tcbuselibrary{minted, skins, breakable}
+
+% DEFINE GITHUB DARK THEME COLORS %
+\definecolor{ghback}{HTML}{0d1117}    % Dark background
+\definecolor{ghtext}{HTML}{c9d1d9}    % Light gray text
+\definecolor{ghborder}{HTML}{30363d}  % GitHub Border color
+
+% PROFESSIONAL CODE BLOCK CONFIGURATION (MINTED VERSION) %
+\renewcommand{\theFancyVerbLine}{\textcolor{white!60!gray}{\scriptsize\arabic{FancyVerbLine}}}
+\newtcblisting{codeblock}[2][]{
+    enhanced,
+    breakable,
+    colback=ghback,
+    colframe=ghborder,
+    coltitle=ghtext,
+    colupper=ghtext,
+    fonttitle=\bfseries\small,
+    arc=3mm,
+    boxrule=0.5mm,
+    % PADDING SETTINGS
+    left=25pt,
+    right=10pt,
+    top=5pt,
+    bottom=5pt,
+    % MINTED SETTINGS
+    listing engine=minted,
+    listing only,
+    minted language=python,
+    minted options={
+        linenos,
+        numbersep=5pt,
+        fontsize=\footnotesize,
+        breaklines=true,
+        breakanywhere=true,
+        autogobble,
+        style=monokai,
+    },
+    title={#2},
+    #1
+}
+
+% DOCUMENT TITLE SETUP %
+\title {
+	\textbf{2110452 HIGH PERFORMANCE ARCHITECTURE} \\
+    \vspace{1em}
+	\Large{\textbf{Homework 1: Vectorization}} \\
+    \vspace{0.5em}
+    \large{Computer Engineering, Chulalongkorn Univerity}
+}
+\author{Worralop Srichainont}
+\date{\today}
+\setlength{\droptitle}{15em}
+
+% DOCUMENT CONTENTS
+\begin{document}
+
+    \maketitle
+    \thispagestyle{empty}
+    \clearpage
+
+    \tableofcontents
+    \thispagestyle{empty}
+    \clearpage
+
+    \pagenumbering{arabic}
+
+    \section{Problem I}
+        For this problem, we are running the experiment on two \texttt{C} programs.
+        \begin{itemize}
+            \item \texttt{no\_avx.c} is the \texttt{C} program to add 2 integer arrays without vectorization.
+            \item \texttt{avx.c} is the \texttt{C} program to add 2 integer arrays with vectorization.
+        \end{itemize}
+
+        \subsection{No Vectorization}
+            For \texttt{C} libraries, we are going to use.
+            \begin{itemize}
+                \item \texttt{stdio.h} for basic I/O commands.
+                \item \texttt{stdlib.h} for memory allocation using \texttt{malloc()} and \texttt{free()}.
+                \item \texttt{time.h} to set a timer for an experiment.
+            \end{itemize}
+
+            \begin{codeblock}[minted language=c]{Libraries}
+                #include<stdio.h>
+                #include<stdlib.h>
+                #include<time.h>
+            \end{codeblock}
+
+            First, we are define some constants for this test.
+            \begin{itemize}
+                \item \texttt{TEST\_ITERATIONS} is amount of times we execute the experiment.
+                \item \texttt{PROCESS\_ITERATIONS} is amount of times we add 2 arrays for significant runtime differences.
+                \item \texttt{ARRAY\_SIZE} is length of the integer array.
+            \end{itemize}
+
+            \begin{codeblock}[minted language=c]{Constants}
+                #define TEST_ITERATIONS 10
+                #define PROCESS_ITERATIONS 100
+                #define ARRAY_SIZE 6400000
+            \end{codeblock}
+
+            Then, write a simple arrays addition program as follows:
+            \begin{codeblock}[minted language=c]{Scalar Addition}
+                void add(int *a, int *b) {
+                    for(int i = 0; i < ARRAY_SIZE; i++) {
+                        a[i] += b[i];
+                    }
+                }
+            \end{codeblock}
+
+    \pagebreak
+
+            Then, write a \texttt{run\_test()} function to calculate the time for non-vectorized arrays addition.
+            \begin{itemize}
+                \item Use \texttt{malloc()} to allocate a single block of memory for 6,400,000 integers.
+                \item Initialize values inside of both integer arrays.
+                \item Run an experiment for 100 times to see the significant differences.
+                \item Free the allocated memory.
+                \item Convert \texttt{clock\_t} value into \texttt{double} type in second unit, and return it.
+            \end{itemize}
+
+            \begin{codeblock}[minted language=c]{Runtime Calculation}
+                double run_test() {
+                    // Allocated memory for array a and b.
+                    int *a = (int*)malloc(ARRAY_SIZE * sizeof(int));
+                    int *b = (int*)malloc(ARRAY_SIZE * sizeof(int));
+
+                    // Initialize value inside each array.
+                    for(int i = 0; i < ARRAY_SIZE; i++) {
+                        a[i] = i;
+                        b[i] = i;
+                    }
+
+                    // Run an experiment
+                    clock_t begin_time = clock();
+                    for(int i = 0; i < PROCESS_ITERATIONS; i++) {
+                        add(a, b);
+                    }
+                    clock_t end_time = clock();
+
+                    // Free allocated memory
+                    free(a);
+                    free(b);
+
+                    // Return executed time
+                    double run_time = ((double) end_time - begin_time) / CLOCKS_PER_SEC;
+                    return run_time;
+                }
+            \end{codeblock}
+
+            Finally, write a \texttt{main()} function to loop the experiment 10 times and display executed time for each one.
+            \begin{codeblock}[minted language=c]{Run an Experiment}
+                int main() {
+                    printf("============ SCALAR RUNTIME ===========\n");
+                    for(int i = 1; i <= TEST_ITERATIONS; i++) {
+                        printf("TEST %d: %f s\n", i, run_test());
+                    }
+                    return 0;
+                }
+            \end{codeblock}
+
+    \pagebreak
+
+        \subsection{Vectorization}
+            For \texttt{C} libraries, we are going to use.
+            \begin{itemize}
+                \item \texttt{stdio.h} for basic I/O commands.
+                \item \texttt{stdlib.h} for memory allocation using \texttt{malloc()} and \texttt{free()}.
+                \item \texttt{immintrin.h} allows direct use of CPU instructions without writing Assembly.
+                \item \texttt{time.h} to set a timer for an experiment.
+            \end{itemize}
+
+            \begin{codeblock}[minted language=c]{Libraries}
+                #include<stdio.h>
+                #include<stdlib.h>
+                #include<immintrin.h>
+                #include<time.h>
+            \end{codeblock}
+
+            First, we are define some constants for this test.
+            \begin{itemize}
+                \item \texttt{TEST\_ITERATIONS} is amount of times we execute the experiment.
+                \item \texttt{PROCESS\_ITERATIONS} is amount of times we add 2 arrays for significant runtime differences.
+                \item \texttt{ARRAY\_SIZE} is length of the integer array.
+            \end{itemize}
+
+            \begin{codeblock}[minted language=c]{Constants}
+                #define TEST_ITERATIONS 10
+                #define PROCESS_ITERATIONS 100
+                #define ARRAY_SIZE 6400000
+            \end{codeblock}
+
+            For the next step, please read the next page $\rightarrow$
+
+    \pagebreak
+
+            Then, write a vectorized version of array addition by using loop unroll technique.
+            \begin{enumerate}
+                \item Create 256-bit register (\texttt{\_\_m256i}) to store 8 integers (32 bits each).
+                \item The function \texttt{\_mm256\_loadu\_si256} grabs 8 integers (256 bits) from data memory at once and puts them into the CPU vector register.
+                \item The function \texttt{\_mm256\_add\_epi32} is the parallel add function to add 8 integers simultaneously in a single clock cycle.
+                \item The function \texttt{\_mm256\_storeu\_si256} write the sum of 8 integers back into an array.
+                \item After done addition, go to the next 8 integers.
+            \end{enumerate}
+
+            \begin{codeblock}[minted language=c]{Vectorized Addition Part I}
+                void add_avx(int *a, int *b) {
+                    int i = 0;
+                    for(; i < ARRAY_SIZE; i += 8) {
+                        // Load 256 bits chunks of each array.
+                        __m256i av = _mm256_loadu_si256((__m256i*) &a[i]);
+                        __m256i bv = _mm256_loadu_si256((__m256i*) &b[i]);
+
+                        // Add each pair of 32 bits integers in chunks.
+                        av = _mm256_add_epi32(av, bv);
+
+                        // Store 256 bits chunks to variable a.
+                        _mm256_storeu_si256((__m256i*) &a[i], av);
+                    }
+                }
+            \end{codeblock}
+
+            \begin{enumerate}
+                \item[6.] For the leftovers (e.g. array of 26 integers would have 2 leftover integers), just use non-vectorized addition.
+            \end{enumerate}
+
+            \begin{codeblock}[minted language=c]{Vectorized Addition Part II}
+                void add_avx(int *a, int *b) {
+                    /* INSERT PART I CODE... */
+                    for(; i < ARRAY_SIZE; i++) {
+                        a[i] += b[i];
+                    }
+                }
+            \end{codeblock}
+
+    \pagebreak
+
+            Then, write a \texttt{run\_test\_avx()} function to calculate the time for vectorized arrays addition.
+            \begin{itemize}
+                \item Use \texttt{malloc()} to allocate a single block of memory for 6,400,000 integers.
+                \item Initialize values inside of both integer arrays.
+                \item Run an experiment for 100 times to see the significant differences.
+                \item Free the allocated memory.
+                \item Convert \texttt{clock\_t} value into \texttt{double} in second unit, and return it.
+            \end{itemize}
+
+            \begin{codeblock}[minted language=c]{Runtime Calculation}
+                double run_test_avx() {
+                    // Allocated memory for array a and b.
+                    int *a = (int*)malloc(ARRAY_SIZE * sizeof(int));
+                    int *b = (int*)malloc(ARRAY_SIZE * sizeof(int));
+
+                    // Initialize value inside each array.
+                    for(int i = 0; i < ARRAY_SIZE; i++) {
+                        a[i] = i;
+                        b[i] = i;
+                    }
+
+                    // Run experiment
+                    clock_t begin_time = clock();
+                    for(int i = 0; i < PROCESS_ITERATIONS; i++) {
+                        add_avx(a, b);
+                    }
+                    clock_t end_time = clock();
+
+                    // Free allocated memory
+                    free(a);
+                    free(b);
+
+                    // Return executed time
+                    double run_time = ((double) end_time - begin_time) / CLOCKS_PER_SEC;
+                    return run_time;
+                }
+            \end{codeblock}
+
+            Finally, write a \texttt{main()} function to loop the experiment 10 times and display executed time for each one.
+            \begin{codeblock}[minted language=c]{Run an Experiment}
+                int main() {
+                    printf("============ VECTORIZE RUNTIME ===========\n");
+                    for(int i = 1; i <= TEST_ITERATIONS; i++) {
+                        printf("TEST %d: %f s\n", i, run_test_avx());
+                    }
+                    return 0;
+                }
+            \end{codeblock}
+
+        \subsection{Run Experiment}
+
+            By running both \texttt{C} files at the same time, we can write a batch script.
+            \begin{itemize}
+                \item We are using GCC compiler to compile the \texttt{C} program into \texttt{.exe} file.
+                \item Write \texttt{gcc -O3} to indicate optimization level of the GCC compiler.
+                \item For \texttt{no\_avx.c} file, use \texttt{-fno-tree-vectorize} to prevent compiler from performing vectorization.
+                \item For \texttt{avx.c} file, use \texttt{-mavx2} to allows using \texttt{immintrin.h} library.
+            \end{itemize}
+            \begin{codeblock}[minted language=bat]{Batch Script}
+                REM COMPILE PROGRAM USING GCC COMPILER
+                gcc -O3 -fno-tree-vectorize no_avx.c -o no_avx.exe
+                gcc -O3 -mavx2 avx.c -o avx.exe
+
+                REM EXECUTE EXPERIMENT
+                no_avx.exe
+                avx.exe
+
+                PAUSE
+            \end{codeblock}
+
+            After that, just run this batch script and everything is done!
+
+    \pagebreak
+
+        \subsection{Result}
+
+            After the running the batch script, the program shows the following result.
+
+            \begin{table}[h]
+                \centering
+                \begin{tabular}{|c|c|c|}
+                    \hline
+                    \rule{0pt}{2.5ex}
+                    \textbf{No.} & \textbf{No Vectorization} & \textbf{Vectorization} \\
+                    \hline \hline
+                    1 & 0.111 s & 0.015 s \\
+                    2 & 0.133 s & 0.019 s \\
+                    3 & 0.131 s & 0.017 s \\
+                    4 & 0.120 s & 0.016 s \\
+                    5 & 0.117 s & 0.016 s \\
+                    6 & 0.126 s & 0.016 s \\
+                    7 & 0.114 s & 0.015 s \\
+                    8 & 0.114 s & 0.016 s \\
+                    9 & 0.115 s & 0.014 s \\
+                    10 & 0.112 s & 0.017 s \\
+                    \hline \hline
+                    \textbf{Trimmed mean} & 0.119 s & 0.016 s \\
+                    \hline
+                \end{tabular}
+                \caption{Experiment Result}
+            \end{table}
+
+            From the trimmed mean of both version, we can easily calculate the speedup of the vectorization as follows:
+            \begin{align*}
+                \text{Speedup} &= \frac{{\text{Time}}_{\text{Scalar}}}{{\text{Time}}_{\text{AVX}}} \\[1em]
+                \text{Speedup} &= \frac{0.119 \ \text{s}}{0.016 \ \text{s}} \\[1em]
+                \text{Speedup} &\approx 7.44
+            \end{align*}
+
+            The experiment shows that the vectorization for array addition in \texttt{C} language is \textbf{7.44} times faster.
+
+    \pagebreak
+
+    \section{Problem II}
+        For this problem, we are running the experiment on two \texttt{python} programs.
+        \begin{itemize}
+            \item \texttt{no\_avx.py} is the \texttt{python} program to add 2 integer arrays without vectorization.
+            \item \texttt{avx.py} is the \texttt{python} program to add 2 integer arrays with vectorization.
+        \end{itemize}
+
+        \subsection{No Vectorization}
+            For \texttt{python} library, we need to use \texttt{time} library for to set a timer for an experiment.
+            \begin{codeblock}{Libraries}
+                import time
+            \end{codeblock}
+
+            First, we are define some constants for this test.
+            \begin{itemize}
+                \item \texttt{TEST\_ITERATIONS} is amount of times we execute the experiment.
+                \item \texttt{ARRAY\_SIZE} is length of the integer array.
+            \end{itemize}
+
+            \begin{codeblock}[minted language=c]{Constants}
+                TEST_ITERATIONS = 10
+                ARRAY_SIZE = 6400000
+            \end{codeblock}
+
+            Then, write a \texttt{run\_test()} function to calculate the time for non-vectorized arrays addition.
+            \begin{itemize}
+                \item Initialize two lists, each has 6,400,000 numbers.
+                \item Iterate each number in the list and calculate the sum.
+                \item Return the executed time.
+            \end{itemize}
+
+            \begin{codeblock}{Runtime Calculation}
+                def run_test():
+                    # Create two integer arrays
+                    a = list(range(ARRAY_SIZE))
+                    b = list(range(ARRAY_SIZE))
+
+                    # Run an experiment
+                    begin_time = time.time()
+                    for i in range(ARRAY_SIZE):
+                        a[i] += b[i]
+                    end_time = time.time()
+
+                    # Return executed time
+                    return end_time - begin_time
+            \end{codeblock}
+
+    \pagebreak
+
+            Finally, write a \texttt{main()} function to loop the experiment 10 times and display executed time for each one.
+            \begin{codeblock}{Run an Experiment}
+                def main():
+                    print("============ SCALAR RUNTIME ===========")
+                    for i in range(TEST_ITERATIONS):
+                        print(f"TEST {i + 1}: {run_test():.3f} s")
+
+                if __name__ == "__main__":
+                    main()
+            \end{codeblock}
+
+    \pagebreak
+
+        \subsection{Vectorization}
+            For \texttt{python} libraries, we are going to use.
+            \begin{itemize}
+                \item \texttt{time} to set a timer for an experiment.
+                \item \texttt{numpy} for vectorized mathematics operations.
+            \end{itemize}
+
+            \begin{codeblock}{Libraries}
+                import time
+                import numpy as np
+            \end{codeblock}
+
+            First, we are define some constants for this test.
+            \begin{itemize}
+                \item \texttt{TEST\_ITERATIONS} is amount of times we execute the experiment.
+                \item \texttt{ARRAY\_SIZE} is length of the integer array.
+            \end{itemize}
+
+            \begin{codeblock}[minted language=c]{Constants}
+                TEST_ITERATIONS = 10
+                ARRAY_SIZE = 6400000
+            \end{codeblock}
+
+            Then, write a \texttt{run\_test()} function to calculate the time for vectorized arrays addition.
+            \begin{itemize}
+                \item Initialize two \texttt{numpy} array, each has 6,400,000 numbers.
+                \item Simply add two \texttt{numpy} array. This is vectorized addition.
+                \item Return the executed time.
+            \end{itemize}
+
+            \begin{codeblock}{Runtime Calculation}
+                def run_test():
+                    # Create two integer arrays
+                    a = np.arange(0, ARRAY_SIZE)
+                    b = np.arange(0, ARRAY_SIZE)
+
+                    # Run an experiment
+                    begin_time = time.time()
+                    a += b
+                    end_time = time.time()
+
+                    # Return executed time
+                    return end_time - begin_time
+            \end{codeblock}
+
+    \pagebreak
+
+            Finally, write a \texttt{main()} function to loop the experiment 10 times and display executed time for each one.
+            \begin{codeblock}{Run an Experiment}
+                def main():
+                    print("============ VECTORIZE RUNTIME ===========")
+                    for i in range(TEST_ITERATIONS):
+                        print(f"TEST {i + 1}: {run_test():.3f} s")
+
+                if __name__ == "__main__":
+                    main()
+            \end{codeblock}
+
+    \pagebreak
+
+        \subsection{Run Experiment}
+            By running both \texttt{python} files at the same time, we can write a batch script as follows:
+            \begin{codeblock}[minted language=bat]{Batch Script}
+                REM RUN EXPERIMENT
+                python -u no_avx.py
+                python -u avx.py
+
+                PAUSE
+            \end{codeblock}
+
+            After that, just run this batch script and everything is done!
+
+    \pagebreak
+
+        \subsection{Result}
+            After the running the batch script, the program shows the following result.
+
+            \begin{table}[h]
+                \centering
+                \begin{tabular}{|c|c|c|}
+                    \hline
+                    \rule{0pt}{2.5ex}
+                    \textbf{No.} & \textbf{No Vectorization} & \textbf{Vectorization} \\
+                    \hline \hline
+                    1 & 0.658 s & 0.008 s \\
+                    2 & 0.624 s & 0.005 s \\
+                    3 & 0.674 s & 0.006 s \\
+                    4 & 0.688 s & 0.005 s \\
+                    5 & 0.561 s & 0.007 s \\
+                    6 & 0.616 s & 0.006 s \\
+                    7 & 0.623 s & 0.008 s \\
+                    8 & 0.600 s & 0.006 s \\
+                    9 & 0.580 s & 0.005 s \\
+                    10 & 0.585 s & 0.005 s \\
+                    \hline \hline
+                    \textbf{Trimmed mean} & 0.620 s & 0.006 s \\
+                    \hline
+                \end{tabular}
+                \caption{Experiment Result}
+            \end{table}
+
+            From the trimmed mean of both version, we can easily calculate the speedup of the vectorization as follows:
+            \begin{align*}
+                \text{Speedup} &= \frac{{\text{Time}}_{\text{Scalar}}}{{\text{Time}}_{\text{AVX}}} \\[1em]
+                \text{Speedup} &= \frac{0.620 \ \text{s}}{0.006 \ \text{s}} \\[1em]
+                \text{Speedup} &\approx 103.33
+            \end{align*}
+
+            The experiment shows that the vectorization for array addition in \texttt{python} language is \textbf{103.33} times faster.
+
+    \pagebreak
+
+    \section{Problem III}
+
+    \noindent \textbf{Question}: While vectorization is powerful, please explain a situation when it may not be beneficial.
+
+    \vspace{1em}
+
+    \noindent \textbf{Answer}: There are some situation where vectorization may not beneficial, such as:
+    \begin{enumerate}
+        \item \textbf{Data Dependencies}: The program requires the result from previous iteration to calculate, so it cannot execute in parallel. (e.g. \texttt{a[i] = a[i - 1] + b[i]})
+        \item \textbf{Conditional Branching}: Vectorization applies the same instructions into multiple data simultaneously. If inside the loop has complex \texttt{if-else} statements, each element would have different action and vectorization is definitely not suitable for the task like this.
+        \item \textbf{Non-Contiguous Memory}: Vectorization works best when the data are contiguous memory like \texttt{array} in \texttt{C} and \texttt{list} in \texttt{python}. If the data are scattered, vectorization would be slower since it needs to gather all the scattered data before doing the actual operation.
+    \end{enumerate}
+
+\end{document}
