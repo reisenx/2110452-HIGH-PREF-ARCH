@@ -1,0 +1,23 @@
+============ SCALAR RUNTIME ===========
+TEST 1: 0.658 s
+TEST 2: 0.624 s
+TEST 3: 0.674 s
+TEST 4: 0.688 s MAX
+TEST 5: 0.561 s MIN
+TEST 6: 0.616 s
+TEST 7: 0.623 s
+TEST 8: 0.600 s
+TEST 9: 0.580 s
+TEST 10: 0.585 s
+
+============ VECTORIZE RUNTIME ===========
+TEST 1: 0.008 s MAX
+TEST 2: 0.005 s MIN
+TEST 3: 0.006 s
+TEST 4: 0.005 s
+TEST 5: 0.007 s
+TEST 6: 0.006 s
+TEST 7: 0.008 s
+TEST 8: 0.006 s
+TEST 9: 0.005 s
+TEST 10: 0.005 s
