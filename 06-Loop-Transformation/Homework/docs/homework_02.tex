@@ -1,0 +1,988 @@
+% DOCUMENT CLASS SETUP
+\documentclass[12pt, a4paper]{article}
+
+% DOCUMENT PACKAGES
+\usepackage[a4paper, margin=1in]{geometry}
+\usepackage{titling}
+\usepackage{enumitem}
+\usepackage{amsmath}
+\usepackage{amssymb}
+\usepackage{mathtools}
+\usepackage{graphicx}
+\usepackage{xcolor}
+\usepackage{listings}
+\usepackage{hyperref}
+\usepackage{csquotes}
+
+% FONT AND ENCODING SETUP
+\usepackage{fontspec}
+\usepackage{polyglossia}
+\usepackage[Thai]{ucharclasses}
+\setdefaultlanguage{english}
+\setotherlanguage{thai}
+\setTransitionsFor{Thai}{\thaifont}{\normalfont}
+\newfontfamily{\thaifont}{THSarabun.ttf}[
+    Path=./,
+    BoldFont=THSarabunBold.ttf,
+    ItalicFont=THSarabunItalic.ttf,
+    BoldItalicFont=THSarabunBoldItalic.ttf,
+    Scale=1.23
+]
+\XeTeXlinebreaklocale "th"
+\XeTeXlinebreakskip = 0pt plus 1pt
+
+% PROFESSIONAL CODE BLOCK
+\usepackage{tcolorbox}
+\tcbuselibrary{minted, skins, breakable}
+
+% DEFINE GITHUB DARK THEME COLORS %
+\definecolor{ghback}{HTML}{0d1117}    % Dark background
+\definecolor{ghtext}{HTML}{c9d1d9}    % Light gray text
+\definecolor{ghborder}{HTML}{30363d}  % GitHub Border color
+
+% PROFESSIONAL CODE BLOCK CONFIGURATION (MINTED VERSION) %
+\renewcommand{\theFancyVerbLine}{\textcolor{white!60!gray}{\scriptsize\arabic{FancyVerbLine}}}
+\newtcblisting{codeblock}[2][]{
+    enhanced,
+    breakable,
+    colback=ghback,
+    colframe=ghborder,
+    coltitle=ghtext,
+    colupper=ghtext,
+    fonttitle=\bfseries\small,
+    arc=3mm,
+    boxrule=0.5mm,
+    % PADDING SETTINGS
+    left=25pt,
+    right=10pt,
+    top=5pt,
+    bottom=5pt,
+    % MINTED SETTINGS
+    listing engine=minted,
+    listing only,
+    minted language=python,
+    minted options={
+        linenos,
+        numbersep=5pt,
+        fontsize=\footnotesize,
+        breaklines=true,
+        breakanywhere=true,
+        autogobble,
+        style=monokai,
+    },
+    title={#2},
+    #1
+}
+
+% DOCUMENT TITLE SETUP %
+\title {
+	\textbf{2110452 HIGH PERFORMANCE ARCHITECTURE} \\
+    \vspace{1em}
+	\Large{\textbf{Homework 2: Loop Transformation}} \\
+    \vspace{0.5em}
+    \large{Computer Engineering, Chulalongkorn Univerity}
+}
+\author{Worralop Srichainont}
+\date{\today}
+\setlength{\droptitle}{15em}
+
+% DOCUMENT CONTENTS
+\begin{document}
+
+    \maketitle
+    \thispagestyle{empty}
+    \clearpage
+
+    \tableofcontents
+    \thispagestyle{empty}
+    \clearpage
+
+    \pagenumbering{arabic}
+
+    \section{Problem I}
+        Try code the matrix (e.g. $8 \times 8$) multiplication in a straight forward algorithm.
+        Compile it with various optimizations.
+        See if the compiler is able to perform loop interchange.
+
+        \subsection{Matrix Multiplication Code}
+            \noindent Given the $N \times N$ matrix multiplication below
+            $$
+                \begin{bmatrix}
+                    c_{11} & c_{12} & \dots & c_{1N} \\
+                    c_{21} & c_{22} & \dots & c_{2N} \\
+                    \vdots & \vdots & \ddots & \vdots \\
+                    c_{N1} & c_{N2} & \dots & c_{NN} \\
+                \end{bmatrix}
+                =
+                \begin{bmatrix}
+                    a_{11} & a_{12} & \dots & a_{1N} \\
+                    a_{21} & a_{22} & \dots & a_{2N} \\
+                    \vdots & \vdots & \ddots & \vdots \\
+                    a_{N1} & a_{N2} & \dots & a_{NN} \\
+                \end{bmatrix}
+                \begin{bmatrix}
+                    b_{11} & b_{12} & \dots & b_{1N} \\
+                    b_{21} & b_{22} & \dots & b_{2N} \\
+                    \vdots & \vdots & \ddots & \vdots \\
+                    b_{N1} & b_{N2} & \dots & b_{NN} \\
+                \end{bmatrix}
+            $$
+
+            \noindent The member $c_{ij}$ for $0 \leq i, j \leq N$ can be calculated by the following formula.
+            $$c_{ij} = a_{i1} b_{1j} + a_{i2} b_{2j} + \dots + a_{iN} b_{Nj} = \sum_{k = 1}^{N} a_{ik} b_{kj}$$
+
+            \noindent Therefore, matrix multiplication can be implemented as a C code as follows.
+            \begin{codeblock}[minted language=c]{Matrix Multiplication}
+                #include<stdio.h>
+                #define MATRIX_SIZE 8
+
+                int a[MATRIX_SIZE][MATRIX_SIZE];
+                int b[MATRIX_SIZE][MATRIX_SIZE];
+                int c[MATRIX_SIZE][MATRIX_SIZE];
+
+                int main() {
+                    for (int i = 0; i < MATRIX_SIZE; i++) {
+                        for (int j = 0; j < MATRIX_SIZE; j++) {
+                            c[i][j] = 0;
+                            for (int k = 0; k < MATRIX_SIZE; k++) {
+                                c[i][j] += a[i][k] * b[k][j];
+                            }
+                        }
+                    }
+                    return 0;
+                }
+            \end{codeblock}
+
+    \pagebreak
+
+        \subsection{No Optimization}
+            First, use \texttt{gcc} compiler to compile the C code into assembly by this command line
+            \begin{codeblock}[minted language=bat]{Optimization Level 0}
+                gcc -O0 -S matrix_multiplication.c -o matrix_multiplication_o0.asm
+            \end{codeblock}
+
+            \subsubsection{Stack Memory}
+                \begin{itemize}
+                    \item Save the base pointer (\texttt{\%rbp}) of the calling function onto the stack.
+                    \item Copies the current stack pointer (\texttt{\%rsp}) into the base pointer (\texttt{\%rbp}).
+                    \begin{itemize}
+                        \item The base pointer (\texttt{\%rbp}) acts as a fixed reference point to access local variables.
+                    \end{itemize}
+                    \item Subtract 48 from the stack pointer (\texttt{\%rsp}) to allocate 48 bytes of memory to the stack.
+                    \begin{itemize}
+                        \item 16 bytes memory for \texttt{i, j, k} integers variables.
+                        \item 32 bytes memory for function calls.
+                    \end{itemize}
+                \end{itemize}
+                \begin{codeblock}[minted language=asm]{Stack Memory}
+                    main:
+                        pushq   %rbp
+                        movq    %rsp, %rbp
+                        subq    $48, %rsp
+                \end{codeblock}
+
+                \noindent According to the assembly code above, here is the stack memory partition.
+                Note that the \texttt{\%rsp} is the stack pointer (offset = 0)
+                and the \texttt{\%rbp} is the base pointer (offset = 48)
+                \begin{table}[h]
+                    \centering
+                    \begin{tabular}{|c|c|l|}
+                        \hline
+                        Offset from \texttt{\%rsp} & Size (bytes) & Usage \\
+                        \hline \hline
+                        0 - 31 & 32 & Shadow space for function calls. \\
+                        32 - 47 & 16 & Store a local variables (\texttt{i, j, k}) \\
+                        \hline
+                    \end{tabular}
+                \end{table}
+
+    \pagebreak
+
+            \subsubsection{Outer Loop}
+                This section is an explanation of the assembly code for the outer loop logic which is this section of the code
+                \begin{codeblock}[minted language=c]{Outer Loop}
+                    for (int i = 0; i < 8; i++) {
+                        for (int j = 0; j < 8; j++) {
+                            // MATRIX MULTIPLICATION LOGIC HERE...
+                        }
+                    }
+                    return 0;
+                \end{codeblock}
+
+                \begin{itemize}
+                    \item Call C runtime initialization function by calling \texttt{\_\_main}
+                    \item Store the number \texttt{0} to the \texttt{i} variables which is stored into the
+                    memory at 4 bytes before the base pointer (\texttt{\%rbp})
+                    \item Then jump to \texttt{.L2}
+                \end{itemize}
+                \begin{codeblock}[minted language=asm]{Initialize i in the Outer Loop}
+                    main:
+                        # STACK MEMORY ASM CODE
+                        call    __main
+                        movl    $0, -4(%rbp)
+                        jmp .L2
+                \end{codeblock}
+
+                \begin{itemize}
+                    \item Check if the \texttt{i} variable is $\leq 7$
+                    \begin{itemize}
+                        \item \textbf{If yes}, jump to \texttt{.L7}
+                        \item \textbf{If no}, continue instructions in \texttt{.L2}
+                    \end{itemize}
+                    \item Store the number \texttt{0} to the register \texttt{\%eax}
+                    \item Add 48 to the stack pointer (\texttt{\%rsp}) to free 48 bytes of memory.
+                    \item Restore the base pointer (\texttt{\%rbp}) to the initial value before running this program.
+                    \item Ends the program using \texttt{ret} instruction.
+                \end{itemize}
+                \begin{codeblock}[minted language=asm]{Comparing i in the Outer Loop}
+                    .L2:
+                        cmpl    $7, -4(%rbp)
+                        jle .L7
+                        movl    $0, %eax
+                        addq    $48, %rsp
+                        popq    %rbp
+                        ret
+                \end{codeblock}
+
+    \pagebreak
+
+                \begin{itemize}
+                    \item Store the number \texttt{0} to the \texttt{j} variables which is stored into the
+                    memory at 8 bytes before the base pointer (\texttt{\%rbp})
+                    \item Then jump to \texttt{.L3}
+                \end{itemize}
+                \begin{codeblock}[minted language=asm]{Initialize j in the Outer Loop}
+                    .L7:
+                        movl    $0, -8(%rbp)
+                        jmp .L3
+                \end{codeblock}
+
+                \begin{itemize}
+                    \item Check if the \texttt{j} variable is $\leq 7$
+                    \begin{itemize}
+                        \item \textbf{If yes}, jump to \texttt{.L6}
+                        \item \textbf{If no}, continue instructions in \texttt{.L3}
+                    \end{itemize}
+                    \item Add the variable \texttt{i} by 1
+                \end{itemize}
+                \begin{codeblock}[minted language=asm]{Comparing j in the Outer Loop}
+                    .L3:
+                        cmpl    $7, -8(%rbp)
+                        jle .L6
+                        addl    $1, -4(%rbp)
+                \end{codeblock}
+
+    \pagebreak
+
+            \subsubsection{Inner Loop}
+                This section is an explanation of the assembly code for the inner loop logic which is this section of the code
+                \begin{codeblock}[minted language=c]{Outer Loop}
+                    c[i][j] = 0;
+                    for (int k = 0; k < MATRIX_SIZE; k++) {
+                        c[i][j] += a[i][k] * b[k][j];
+                    }
+                \end{codeblock}
+
+                \begin{itemize}
+                    \item Handle the variable \texttt{j}
+                    \begin{itemize}
+                        \item Get the value of the variable \texttt{j} from the memory and put in the register \texttt{\%eax}.
+                        \item Extend the value in the register \texttt{\%eax} from 32 bits to 64 bits for memory addressing
+                        and store it to the register \texttt{\%rax}.
+                    \end{itemize}
+                    \item Handle the variable \texttt{i}
+                    \begin{itemize}
+                        \item Get the value of the variable \texttt{i} from the memory and put in the register \texttt{\%edx}.
+                        \item Extend the value of the variable \texttt{i} from the register \texttt{\%edx} from 32 bits to 64 bits
+                        for memory addressing and store it to the register \texttt{\%rdx}.
+                    \end{itemize}
+                    \item Get the memory address of an element in the array.
+                    \begin{itemize}
+                        \item Calculate $i \times 8$ by shift left the value inside the register \texttt{\%rdx} by 3 bits.
+                        \item Add $i \times 8$ from the register \texttt{\%rdx} to the \texttt{j} in the register \texttt{\%rax}.
+                        Now, the register \texttt{\%rax} stores $(i \times 8) + j$
+                        \item Multiply the value in the register \texttt{\%rax} by 4 because an integer takes 4 bytes of memory.
+                        Then, store the result $4((i \times 8) + j)$ to the register \texttt{\%rdx}
+                        \item Store the starting memory address of matrix \texttt{c} to the register \texttt{\%rax}
+                        \item Store the number 0 to the \texttt{c[i][j]} where memory address is at the sum of the
+                        starting memory address (\texttt{\%rax}) and the offset (\texttt{\%rdx}).
+                    \end{itemize}
+                \end{itemize}
+                \begin{codeblock}[minted language=asm]{Initialize \texttt{c[i][j]}}
+                    .L6:
+                        movl    -8(%rbp), %eax
+                        cltq
+                        movl    -4(%rbp), %edx
+                        movslq  %edx, %rdx
+                        salq    $3, %rdx
+                        addq    %rdx, %rax
+                        leaq    0(,%rax,4), %rdx
+                        leaq    c(%rip), %rax
+                        movl    $0, (%rdx,%rax)
+                \end{codeblock}
+
+    \pagebreak
+
+                \begin{itemize}
+                    \item Store the number \texttt{0} to the \texttt{k} variables which is stored into the
+                    memory at 12 bytes before the base pointer (\texttt{\%rbp})
+                    \item Then jump to \texttt{.L4}
+                    \item Check if the \texttt{k} variable is $\leq 7$
+                    \begin{itemize}
+                        \item \textbf{If yes}, jump to \texttt{.L5}
+                        \item \textbf{If no}, continue instructions in \texttt{.L4}
+                    \end{itemize}
+                    \item Add the variable \texttt{j} by 1
+                \end{itemize}
+                \begin{codeblock}[minted language=asm]{Inner Loop}
+                    .L6:
+                        # Initialize c[i][j] = 0 instruction in ASM
+                        movl    $0, -12(%rbp)
+                        jmp .L4
+
+                    .L4:
+                        cmpl    $7, -12(%rbp)
+                        jle .L5
+                        addl    $1, -8(%rbp)
+                \end{codeblock}
+
+                Then, access the value of \texttt{c[i][j]} by using the similar steps from the page 5,
+                and store the value of \texttt{c[i][j]} to the register \texttt{\%ecx}
+                \begin{codeblock}[minted language=asm]{Access \texttt{c[i][j]}}
+                    .L5:
+                        # Store i and j to the registers
+                        movl    -8(%rbp), %eax
+                        cltq
+                        movl    -4(%rbp), %edx
+                        movslq  %edx, %rdx
+                        # Calculate the memory address of c[i][j]
+                        salq    $3, %rdx
+                        addq    %rdx, %rax
+                        leaq    0(,%rax,4), %rdx
+                        leaq    c(%rip), %rax
+                        # Store the value of c[i][j] to the register
+                        movl    (%rdx,%rax), %ecx
+                \end{codeblock}
+
+    \pagebreak
+
+                Next, access the value of \texttt{a[i][k]} by using the similar steps from the page 5,
+                and store the value of \texttt{a[i][k]} to the register \texttt{\%edx}
+                \begin{codeblock}[minted language=asm]{Access \texttt{a[i][k]}}
+                    .L5:
+                        # PREVIOUS INSTRUCTIONS...
+
+                        # Store i and k to the registers
+                        movl    -12(%rbp), %eax
+                        cltq
+                        movl    -4(%rbp), %edx
+                        movslq  %edx, %rdx
+                        # Calculate the memory address of a[i][k]
+                        salq    $3, %rdx
+                        addq    %rdx, %rax
+                        leaq    0(,%rax,4), %rdx
+                        leaq    a(%rip), %rax
+                        # Store the value of a[i][k] to the register
+                        movl    (%rdx,%rax), %edx
+                \end{codeblock}
+
+                After accessing \texttt{a[i][k]}, access the value of \texttt{b[k][j]}  by using the similar steps
+                from the page 5, and store the value of \texttt{b[k][j]} to the register \texttt{\%eax}
+                \begin{codeblock}[minted language=asm]{Access \texttt{b[k][j]}}
+                    .L5:
+                        # PREVIOUS INSTRUCTIONS...
+
+                        # Store j and k to the registers
+                        movl    -8(%rbp), %eax
+                        cltq
+                        movl    -12(%rbp), %r8d
+                        movslq  %r8d, %r8
+                        # Calculate the memory address of b[k][j]
+                        salq    $3, %r8
+                        addq    %r8, %rax
+                        leaq    0(,%rax,4), %r8
+                        leaq    b(%rip), %rax
+                        # Store the value of b[k][j] to the register
+                        movl    (%r8,%rax), %eax
+                \end{codeblock}
+
+    \pagebreak
+
+            \subsubsection{Matrix Multiplication}
+                This section is an explanation of the assembly code for the matrix multiplication logic which is this section of the code
+                \begin{codeblock}[minted language=c]{Matrix Multiplication}
+                    c[i][j] += a[i][k] * b[k][j];
+                \end{codeblock}
+
+                Before explaining the logic, remind that we have stores these values inside the registers
+                in the previous section
+                \begin{itemize}
+                    \item The value of \texttt{c[i][j]} is stored in the register \texttt{\%ecx}
+                    \item The value of \texttt{a[i][k]} is stored in the register \texttt{\%edx}
+                    \item The value of \texttt{b[k][j]} is stored in the register \texttt{\%eax}
+                \end{itemize}
+
+                \noindent This is the further explanation of assembly code of \texttt{.L5}
+                \begin{itemize}
+                    \item Mutiply \texttt{a[i][k]} from the register \texttt{\%edx} with
+                    \texttt{b[k][j]} from the register \texttt{\%eax}.
+                    Then, store the product to the register \texttt{\%eax}
+                    \item Add the product \texttt{a[i][k] * b[k][j]} from the register \texttt{\%eax}
+                    to \texttt{c[i][j]} from the register \texttt{\%ecx}.
+                    Then, store the sum to the register \texttt{\%ecx}.
+                \end{itemize}
+                \begin{codeblock}[minted language=asm]{Math Process}
+                    .L5:
+                        # PREVIOUS INSTRUCTIONS...
+                        imull   %edx, %eax
+                        addl    %eax, %ecx
+                \end{codeblock}
+
+                Finally, calculate the memory address of \texttt{c[i][j]} and
+                store the result \texttt{c[i][j] + (a[i][k] * b[k][j])} which is calculated in the previous step
+                to the \texttt{c[i][j]} and increment \texttt{k} by 1.
+                \begin{codeblock}[minted language=asm]{Store the Result}
+                    .L5:
+                        # Store i and j to the registers
+                        movl    -8(%rbp), %eax
+                        cltq
+                        movl    -4(%rbp), %edx
+                        movslq  %edx, %rdx
+                        # Calculate the memory address of c[i][j]
+                        salq    $3, %rdx
+                        addq    %rdx, %rax
+                        leaq    0(,%rax,4), %rdx
+                        leaq    c(%rip), %rax
+                        # Store the result to c[i][j]
+                        movl    %ecx, (%rdx,%rax)
+                        # Increment k by 1
+                        addl    $1, -12(%rbp)
+                \end{codeblock}
+
+    \pagebreak
+
+        \subsection{With Optimization}
+            First, use \texttt{gcc} compiler to compile the C code into assembly by this command line
+            \begin{codeblock}[minted language=bat]{Optimization Level 3}
+                gcc -O3 -S matrix_multiplication.c -o matrix_multiplication_o3.asm
+            \end{codeblock}
+
+            \subsubsection{Stack Memory}
+                First, subtract 248 from the stack pointer \texttt{\%rsp} to allocate 248 bytes of memory to the stack.
+                Then, partition the memory for backup the state of vector registers \texttt{\%xxm6 - \%xxm15}.
+                \begin{table}[h]
+                    \centering
+                    \begin{tabular}{|c|c|l|}
+                        \hline
+                        Offset from \texttt{\%rsp} & Size (bytes) & Usage \\
+                        \hline \hline
+                        0 - 31 & 32 & Shadow space for function calls. \\
+                        32 - 79 & 48 & Store a local variables or temporary math results \\
+                        80 - 95 & 16 & Save the state of vector register \texttt{\%xx6} \\
+                        96 - 111 & 16 & Save the state of vector register \texttt{\%xx7} \\
+                        112 - 127 & 16 & Save the state of vector register \texttt{\%xx8} \\
+                        128 - 143 & 16 & Save the state of vector register \texttt{\%xx9} \\
+                        144 - 159 & 16 & Save the state of vector register \texttt{\%xx10} \\
+                        160 - 175 & 16 & Save the state of vector register \texttt{\%xx11} \\
+                        176 - 191 & 16 & Save the state of vector register \texttt{\%xx12} \\
+                        192 - 207 & 16 & Save the state of vector register \texttt{\%xx13} \\
+                        208 - 223 & 16 & Save the state of vector register \texttt{\%xx14} \\
+                        224 - 239 & 16 & Save the state of vector register \texttt{\%xx15} \\
+                        240 - 247 & 8 & 16 bytes alignment padding \\
+                        \hline
+                    \end{tabular}
+                \end{table}
+                \begin{codeblock}[minted language=asm]{Stack Memory Partition}
+                    main:
+                        subq    $248, %rsp
+                        movups  %xmm6, 80(%rsp)
+                        movups  %xmm7, 96(%rsp)
+                        movups  %xmm8, 112(%rsp)
+                        movups  %xmm9, 128(%rsp)
+                        movups  %xmm10, 144(%rsp)
+                        movups  %xmm11, 160(%rsp)
+                        movups  %xmm12, 176(%rsp)
+                        movups  %xmm13, 192(%rsp)
+                        movups  %xmm14, 208(%rsp)
+                        movups  %xmm15, 224(%rsp)
+                \end{codeblock}
+
+    \pagebreak
+            \subsubsection{Pointers}
+                Next, call C runtime initialization function by calling \texttt{\_\_main}
+                and store the pointers to the registers.
+                \begin{table}[h]
+                    \centering
+                    \begin{tabular}{|c|l|}
+                        \hline
+                        Register & Usage \\
+                        \hline \hline
+                        \texttt{\%rdx} & The starting memory address of matrix \texttt{a} \\
+                        \texttt{\%rcx} & The starting memory address of matrix \texttt{c} \\
+                        \texttt{\%r8} & The ending memory address of matrix \texttt{a} \\
+                        \texttt{\%rax} & The starting memory address of matrix \texttt{b} \\
+                        \hline
+                    \end{tabular}
+                \end{table}
+
+                Note that the matrix has $8 \times 8$ which has 64 integers and takes 256 bytes of memory.
+                Therefore, adding 256 to starting memory address of matrix \texttt{a} will get
+                the ending memory address of matrix \texttt{a}.
+
+                \begin{codeblock}[minted language=asm]{Pointers}
+                    main:
+                        call    __main
+                        leaq    a(%rip), %rdx
+                        leaq    c(%rip), %rcx
+                        leaq    256(%rdx), %r8
+                        leaq    b(%rip), %rax
+                \end{codeblock}
+
+    \pagebreak
+
+            \subsubsection{Loop Unrolling \& Instruction Scheduling}
+                In level 3 optimization of GCC compiler, it performing loop unrolling.
+                which can be seen in the assembly code that it is hardcoded and
+                has no loop at all.
+
+                \begin{codeblock}[minted language=asm]{Matrix Calculation Instructions}
+                    .L2:
+                        movd    (%rdx), %xmm3
+                        movdqu  (%rax), %xmm1
+                        addq    $32, %rdx
+                        addq    $32, %rcx
+                        movd    -28(%rdx), %xmm4
+                        movd    -24(%rdx), %xmm5
+                        pshufd  $0, %xmm3, %xmm8
+                        movdqa  %xmm8, %xmm13
+                        psrlq   $32, %xmm1
+                        movdqa  %xmm8, %xmm9
+                        # MORE ASM INSTRUCTIONS...
+                \end{codeblock}
+
+                Moreover, the instructions are out of order compared to the original C code
+                and seems random because GCC compiler is performing the instruction scheduling
+                which reduces total clock cycle.
+
+                Since loading data takes more clock cycle than the mathematics operations,
+                the GCC compiler fill this gap by scheduling instructions which is unrelated
+                to the current calculation. This is an example from the actual assembly code.
+                \begin{itemize}
+                    \item Load 4 integers into the vector register \texttt{\%xmm1}.
+                    \item These are instructions which is unrelated to the vector register \texttt{\%xmm1}
+                    \begin{itemize}
+                        \item Add 32 to the pointer \texttt{\%rdx} and \texttt{\%rcx}.
+                        \item Load an integer to vector register \texttt{\%xmm4} then
+                        load another integer to vector register \texttt{\%xmm5}.
+                        \item Fill all slots inside the vector register \texttt{\%xmm8} with
+                        the first element from the vector register \texttt{\%xmm3}.
+                        \item Copy all elements from the vector register \texttt{\%xmm8} to
+                        the vector register \texttt{\%xmm13}.
+                    \end{itemize}
+                    \item Finally performing an operations to the vector register \texttt{\%xmm1}
+                    which is shift right by 32 bits.
+                \end{itemize}
+                \begin{codeblock}[minted language=asm]{Instruction Order}
+                    .L2:
+                        movdqu  (%rax), %xmm1
+                        addq    $32, %rdx
+                        addq    $32, %rcx
+                        movd    -28(%rdx), %xmm4
+                        movd    -24(%rdx), %xmm5
+                        pshufd  $0, %xmm3, %xmm8
+                        movdqa  %xmm8, %xmm13
+                        psrlq   $32, %xmm1
+                        # MORE ASM INSTRUCTIONS...
+                \end{codeblock}
+
+    \pagebreak
+
+            \subsubsection{Vectorization}
+                In addition, the \texttt{-O3} optimization also performs vectorization by using several SIMD instructions.
+                \begin{itemize}
+                    \item Data movement \& manipulation instructions
+                    \begin{itemize}
+                        \item The vector registers \texttt{\%xmm6} to \texttt{\%xmm15} have 128 bits of memory
+                        which contains 4 integers at once
+                        \item The \texttt{movdqu} and \texttt{movdqa} instruction loads 4 integers to the vector register at once.
+                        \item The \texttt{pushfd} instruction copy an integer from a vector register and
+                        fill that integer to all slots in another vector register at once.
+                        \item The \texttt{prslq} shift right bits on all value in register at once.
+                        \item The \texttt{punpckldq} merges two vector registers.
+                    \end{itemize}
+                    \item Mathematics operation instructions
+                    \begin{itemize}
+                        \item The \texttt{pmuludq} instruction multiples two vector registers at once.
+                        \item The \texttt{paddd} instruction adds 4 integers inside the vector register at once.
+                    \end{itemize}
+                \end{itemize}
+                \begin{codeblock}[minted language=asm]{SIMD Instruction}
+                    .L2:
+                        movdqu  (%rax), %xmm1
+                        # OTHER ASM INSTRUCTIONS...
+                        pshufd  $0, %xmm3, %xmm8
+                        movdqa  %xmm8, %xmm13
+                        psrlq   $32, %xmm1
+                        # OTHER ASM INSTRUCTIONS...
+                        pmuludq b(%rip), %xmm9
+                        # OTHER ASM INSTRUCTIONS...
+                        punpckldq    %xmm1, %xmm9
+                        # OTHER ASM INSTRUCTIONS...
+                        paddd    %xmm10, %xmm9
+                        # OTHER ASM INSTRUCTIONS...
+                \end{codeblock}
+
+    \pagebreak
+
+            \subsection{Summary}
+
+                \noindent \textbf{No Optimization (\texttt{gcc -O0})}
+                \begin{itemize}
+                    \item \textbf{Basic Blocks}: The assembly code is separated into several basic blocks
+                    (e.g. \texttt{.L3, .L4, .L5}) which are connected by jump instruction (\texttt{jmp, jle}).
+                    \item \textbf{High Control Overhead}: For every single mathematical calculation, the processor
+                    must update the counter \texttt{i, j, k} and compare if it is $\leq 7$.
+                \end{itemize}
+
+                \noindent \textbf{With Optimization (\texttt{gcc -O3})}
+                \begin{itemize}
+                    \item \textbf{Loop Unrolling}: All matrix calculation loops are replaced by a massive instructions
+                    inside \texttt{.L2} block instead of jumping between blocks like the \texttt{gcc -O0} version.
+                    \item \textbf{Vectorization}: It uses vector registers (\texttt{\%xmm6 - \%xmm15}) for loading
+                    data and do the mathematical operations with SIMD instructions.
+                    \item \textbf{Loop Interchange}: The compiler performed loop interchange to improve locality,
+                    ensuring the data could be smoothly fed into those vector registers and making vectorization work efficiently
+                \end{itemize}
+
+    \pagebreak
+
+    \section{Problem II}
+        Try this simple code. See if the compiler is able to perform any optimization.
+        Please provide your analysis.
+        \begin{codeblock}[minted language=c]{Simple Code}
+            #include<stdio.h>
+            #define MATRIX_SIZE 8
+
+            double a[MATRIX_SIZE][MATRIX_SIZE];
+            double b[MATRIX_SIZE][MATRIX_SIZE];
+
+            int main() {
+                for (int i = 0; i < MATRIX_SIZE; i++) {
+                    for (int j = 0; j < MATRIX_SIZE; j++) {
+                        a[i][j] = b[i][j] + 2.5;
+                    }
+                }
+                return 0;
+            }
+        \end{codeblock}
+
+	\pagebreak
+
+        \subsection{No Optimization}
+            First, use \texttt{gcc} compiler to compile the C code into assembly by this command line
+            \begin{codeblock}[minted language=bat]{Optimization Level 0}
+                gcc -O0 -S simple_code.c -o simple_code_o0.asm
+            \end{codeblock}
+
+            \subsubsection{Stack Memory}
+                \begin{itemize}
+                    \item Save the base pointer (\texttt{\%rbp}) of the calling function onto the stack.
+                    \item Copies the current stack pointer (\texttt{\%rsp}) into the base pointer (\texttt{\%rbp}).
+                    \begin{itemize}
+                        \item The base pointer (\texttt{\%rbp}) acts as a fixed reference point to access local variables.
+                    \end{itemize}
+                    \item Subtract 48 from the stack pointer (\texttt{\%rsp}) to allocate 48 bytes of memory to the stack.
+                    \begin{itemize}
+                        \item 16 bytes memory for \texttt{i, j} integers variables.
+                        \item 32 bytes memory for function calls.
+                    \end{itemize}
+                \end{itemize}
+                \begin{codeblock}[minted language=asm]{Stack Memory}
+                    main:
+                        pushq   %rbp
+                        movq    %rsp, %rbp
+                        subq    $48, %rsp
+                        call    __main
+                        movl    $0, -4(%rbp)
+                        jmp	.L2
+                \end{codeblock}
+
+                \noindent According to the assembly code above, here is the stack memory partition.
+                Note that the \texttt{\%rsp} is the stack pointer (offset = 0)
+                and the \texttt{\%rbp} is the base pointer (offset = 48)
+                \begin{table}[h]
+                    \centering
+                    \begin{tabular}{|c|c|l|}
+                        \hline
+                        Offset from \texttt{\%rsp} & Size (bytes) & Usage \\
+                        \hline \hline
+                        0 - 31 & 32 & Shadow space for function calls. \\
+                        32 - 47 & 16 & Store a local variables (\texttt{i, j}) \\
+                        \hline
+                    \end{tabular}
+                \end{table}
+
+    \pagebreak
+
+            \subsubsection{Nested Loop}
+                This section is an explanation of the assembly code for the outer loop logic which is this section of the code
+                \begin{codeblock}[minted language=c]{Nested Loop}
+                    for (int i = 0; i < MATRIX_SIZE; i++) {
+                        for (int j = 0; j < MATRIX_SIZE; j++) {
+                            # MATRIX CALCULATION LOGIC HERE...
+                        }
+                    }
+                    return 0;
+                \end{codeblock}
+
+                \begin{itemize}
+                    \item Call C runtime initialization function by calling \texttt{\_\_main}
+                    \item Store the number \texttt{0} to the \texttt{i} variables which is stored into the
+                    memory at 4 bytes before the base pointer (\texttt{\%rbp})
+                    \item Then jump to \texttt{.L2}
+                \end{itemize}
+                \begin{codeblock}[minted language=asm]{Initialize i in the Outer Loop}
+                    main:
+                        # STACK MEMORY ASM CODE
+                        call    __main
+                        movl    $0, -4(%rbp)
+                        jmp .L2
+                \end{codeblock}
+
+                \begin{itemize}
+                    \item Check if the \texttt{i} variable is $\leq 7$
+                    \begin{itemize}
+                        \item \textbf{If yes}, jump to \texttt{.L5}
+                        \item \textbf{If no}, continue instructions in \texttt{.L2}
+                    \end{itemize}
+                    \item Store the number \texttt{0} to the register \texttt{\%eax}
+                    \item Add 48 to the stack pointer (\texttt{\%rsp}) to free 48 bytes of memory.
+                    \item Restore the base pointer (\texttt{\%rbp}) to the initial value before running this program.
+                    \item Ends the program using \texttt{ret} instruction.
+                \end{itemize}
+                \begin{codeblock}[minted language=asm]{Comparing i in the Outer Loop}
+                    .L2:
+                        cmpl    $7, -4(%rbp)
+                        jle .L5
+                        movl    $0, %eax
+                        addq    $48, %rsp
+                        popq    %rbp
+                        ret
+                \end{codeblock}
+
+    \pagebreak
+
+                \begin{itemize}
+                    \item Store the number \texttt{0} to the \texttt{j} variables which is stored into the
+                    memory at 8 bytes before the base pointer (\texttt{\%rbp})
+                    \item Then jump to \texttt{.L3}
+                \end{itemize}
+                \begin{codeblock}[minted language=asm]{Initialize j in the Inner Loop}
+                    .L5:
+                        movl    $0, -8(%rbp)
+                        jmp .L3
+                \end{codeblock}
+
+                \begin{itemize}
+                    \item Check if the \texttt{j} variable is $\leq 7$
+                    \begin{itemize}
+                        \item \textbf{If yes}, jump to \texttt{.L4}
+                        \item \textbf{If no}, continue instructions in \texttt{.L3}
+                    \end{itemize}
+                    \item Add the variable \texttt{i} by 1
+                \end{itemize}
+                \begin{codeblock}[minted language=asm]{Comparing j in the Inner Loop}
+                    .L3:
+                        cmpl    $7, -8(%rbp)
+                        jle .L4
+                        addl    $1, -4(%rbp)
+                \end{codeblock}
+
+    \pagebreak
+
+            \subsubsection{Matrix Addition}
+                This section is an explanation of the assembly code for the matrix addition logic which is this section of the code
+                \begin{codeblock}[minted language=c]{Matrix Addition}
+                    a[i][j] = b[i][j] + 2.5;
+                \end{codeblock}
+
+                \begin{itemize}
+                    \item Handle the variable \texttt{j}
+                    \begin{itemize}
+                        \item Get the value of the variable \texttt{j} from the memory and put in the register \texttt{\%eax}.
+                        \item Extend the value in the register \texttt{\%eax} from 32 bits to 64 bits for memory addressing
+                        and store it to the register \texttt{\%rax}.
+                    \end{itemize}
+                    \item Handle the variable \texttt{i}
+                    \begin{itemize}
+                        \item Get the value of the variable \texttt{i} from the memory and put in the register \texttt{\%edx}.
+                        \item Extend the value of the variable \texttt{i} from the register \texttt{\%edx} from 32 bits to 64 bits
+                        for memory addressing and store it to the register \texttt{\%rdx}.
+                    \end{itemize}
+                    \item Get the memory address of an element in the array.
+                    \begin{itemize}
+                        \item Calculate $i \times 8$ by shift left the value inside the register \texttt{\%rdx} by 3 bits.
+                        \item Add $i \times 8$ from the register \texttt{\%rdx} to the \texttt{j} in the register \texttt{\%rax}.
+                        Now, the register \texttt{\%rax} stores $(i \times 8) + j$
+                        \item Multiply the value in the register \texttt{\%rax} by 8 because a single \texttt{double} value takes 8 bytes of memory.
+                        Then, store the result $8((i \times 8) + j)$ to the register \texttt{\%rdx}
+                        \item Store the starting memory address of matrix \texttt{b} to the register \texttt{\%rax}
+                        \item Store the memory address to the \texttt{b[i][j]} where memory address is at the sum of the
+                        starting memory address (\texttt{\%rax}) and the offset (\texttt{\%rdx}) inside the register \texttt{\%xmm1}.
+                    \end{itemize}
+                \end{itemize}
+                \begin{codeblock}[minted language=asm]{Access Memory Address}
+                    .L4:
+                        movl    -8(%rbp), %eax
+                        cltq
+                        movl    -4(%rbp), %edx
+                        movslq  %edx, %rdx
+                        salq    $3, %rdx
+                        addq    %rdx, %rax
+                        leaq    0(,%rax,8), %rdx
+                        leaq    b(%rip), %rax
+                        movsd   (%rdx,%rax), %xmm1
+                \end{codeblock}
+
+    \pagebreak
+
+                \begin{itemize}
+                    \item Store a double-precision constant number 2.5 from \texttt{.LC0} to the register {\%xmm0}.
+                    \item Add the \texttt{b[i][j]} from the register \texttt{\%xmm1} to the register \texttt{\%xmm0}.
+                    Now, the register \texttt{\%xmm0} contains \texttt{b[i][j] + 2.5}
+                \end{itemize}
+                \begin{codeblock}[minted language=asm]{Matrix Addition}
+                    .L4:
+                        # PREVIOUS ASM OPERATIONS...
+                        movsd   .LC0(%rip), %xmm0
+                        addsd   %xmm1, %xmm0
+
+                    .LC0:
+                        .long   0
+                        .long   1074003968
+                        .def    __main
+                        .ident  "GCC: (Rev7, Built by MSYS2 project) 15.1.0"
+                \end{codeblock}
+
+                Finally, calculate the memory address of \texttt{a[i][j]} and
+                store the result \texttt{b[i][j] + 2.5} which is in the register
+                \texttt{\%xmm0} and increment \texttt{j} by 1.
+                \begin{codeblock}[minted language=asm]{Store the Result}
+                    .L4:
+                        # PREVIOUS ASM OPERATIONS...
+
+                        # Store i and j to the registers
+                        movl    -8(%rbp), %eax
+                        cltq
+                        movl    -4(%rbp), %edx
+                        movslq  %edx, %rdx
+                        # Calculate the memory address of a[i][j]
+                        salq    $3, %rdx
+                        addq    %rdx, %rax
+                        leaq    0(,%rax,8), %rdx
+                        leaq    a(%rip), %rax
+                        # Store the result to a[i][j]
+                        movsd   %xmm0, (%rdx,%rax)
+                        # Increment j by 1
+                        addl    $1, -8(%rbp)
+                \end{codeblock}
+
+    \pagebreak
+
+        \subsection{With Optimization}
+            First, use \texttt{gcc} compiler to compile the C code into assembly by this command line
+            \begin{codeblock}[minted language=bat]{Optimization Level 3}
+                gcc -O3 -S simple_code.c -o simple_code_o3.asm
+            \end{codeblock}
+
+            In level 3 optimization of GCC compiler, it performing loop unrolling.
+            which can be seen in the assembly code that it is hardcoded and
+            has no loop at all.
+
+            \vspace{1em}
+
+            This assembly code also uses SIMD instruction to perform vectorization.
+            According to the assembly code, it do as follows:
+            \begin{itemize}
+                \item It uses vector registers \texttt{\%xmm0 - \%xmm4} to store multiple numbers at once.
+                Each has 128 bits memory which can store 2 double numbers.
+                \item Store a double-precision constant number 2.5 from \texttt{.LC1} to the register {\%xmm0}.
+                \item SIMD data loading instruction - \texttt{movupd}
+                \begin{itemize}
+                    \item Load \texttt{b[0][2]} and \texttt{b[0][3]} to the vector register \texttt{\%xmm3} at once.
+                    \item Load \texttt{b[0][4]} and \texttt{b[0][5]} to the vector register \texttt{\%xmm2} at once.
+                    \item Load \texttt{b[0][6]} and \texttt{b[0][7]} to the vector register \texttt{\%xmm1} at once.
+                    \item Load \texttt{b[0][0]} and \texttt{b[0][1]} to the vector register \texttt{\%xmm4} at once.
+                \end{itemize}
+
+                \item SIMD adding instruction - \texttt{addpd}
+                \begin{itemize}
+                    \item Add \texttt{b[0][2]} and \texttt{b[0][3]} with 2.5 at once.
+                    \item Add \texttt{b[0][4]} and \texttt{b[0][5]} with 2.5 at once.
+                    \item Add \texttt{b[0][6]} and \texttt{b[0][7]} with 2.5 at once.
+                    \item Add \texttt{b[0][0]} and \texttt{b[0][1]} with 2.5 at once.
+                \end{itemize}
+
+                \item SIMD data storing instruction - \texttt{movups}
+                \begin{itemize}
+                    \item Store \texttt{b[0][2] + 2.5} and \texttt{b[0][3] + 2.5} back to the matrix \texttt{b} at once.
+                    \item Store \texttt{b[0][4] + 2.5} and \texttt{b[0][5] + 2.5} back to the matrix \texttt{b} at once.
+                    \item Store \texttt{b[0][0] + 2.5} and \texttt{b[0][1] + 2.5} back to the matrix \texttt{b} at once.
+                    \item Store \texttt{b[0][6] + 2.5} and \texttt{b[0][7] + 2.5} back to the matrix \texttt{b} at once.
+                \end{itemize}
+            \end{itemize}
+
+            The assembly code is in the next page $\rightarrow$
+
+    \pagebreak
+
+            \begin{codeblock}[minted language=asm]{Matrix Addition Instructions}
+                main:
+                    # Load a constant number 2.5
+                    movddup .LC1(%rip), %xmm0
+                    # Load numbers to the register
+                    movupd  16+b(%rip), %xmm3
+                    movupd  32+b(%rip), %xmm2
+                    movupd  48+b(%rip), %xmm1
+                    movupd  b(%rip), %xmm4
+                    # Add 2.5 to the register
+                    addpd   %xmm0, %xmm3
+                    addpd   %xmm0, %xmm2
+                    addpd   %xmm0, %xmm1
+                    addpd   %xmm0, %xmm4
+                    # Store back to the memory
+                    movups  %xmm3, 16+a(%rip)
+                    movups  %xmm2, 32+a(%rip)
+                    movups  %xmm4, a(%rip)
+                    movups  %xmm1, 48+a(%rip)
+
+                    # MORE ASM INSTRUCTIONS...
+                
+                .LC1:
+                    .long   0
+                    .long   1074003968
+                    .def    __main
+                    .ident  "GCC: (Rev7, Built by MSYS2 project) 15.1.0"
+            \end{codeblock}
+
+    \pagebreak
+
+            \subsection{Summary}
+
+                \noindent \textbf{No Optimization (\texttt{gcc -O0})}
+                \begin{itemize}
+                    \item \textbf{Basic Blocks}: The assembly code is separated into several basic blocks
+                    (e.g. \texttt{.L2, .L3}) which are connected by jump instruction (\texttt{jmp, jle}).
+                    \item \textbf{High Control Overhead}: For every single mathematical calculation, the processor
+                    must update the counter \texttt{i, j} and compare if it is $\leq 7$.
+                \end{itemize}
+
+                \noindent \textbf{With Optimization (\texttt{gcc -O3})}
+                \begin{itemize}
+                    \item \textbf{Loop Unrolling}: All matrix calculation loops are replaced by a massive instructions
+                    inside \texttt{main} block instead of jumping between blocks like the \texttt{gcc -O0} version.
+                    \item \textbf{Vectorization}: It uses vector registers (\texttt{\%xmm0 - \%xmm4}) for loading
+                    data and do the mathematical operations with SIMD instructions.
+                \end{itemize}
+
+\end{document}
